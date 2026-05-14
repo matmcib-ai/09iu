@@ -1,0 +1,112 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+local autoStealEnabled = true
+local stealDelay = 1.40
+local isStealing = false
+
+local function isMyPlot(plot)
+    if not plot then return false end
+    local sign = plot:FindFirstChild("PlotSign")
+    if sign then
+        local yourBase = sign:FindFirstChild("YourBase")
+        if yourBase and yourBase:IsA("BillboardGui") and yourBase.Enabled then
+            return true
+        end
+    end
+    return false
+end
+
+local function getRootPart()
+    local char = LocalPlayer.Character
+    return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso"))
+end
+
+local function isValidStealPrompt(prompt)
+    if not prompt or not prompt.Parent or not prompt.Enabled then return false end
+    local state = prompt:GetAttribute("State")
+    local actionText = prompt.ActionText
+    return state == "Steal" or state == "Grab" or actionText == "Steal" or actionText == "Grab"
+end
+
+local function getNearestStealable()
+    local root = getRootPart()
+    if not root then return nil end
+    
+    local nearestPrompt = nil
+    local minDistance = 180
+    local plots = Workspace:FindFirstChild("Plots")
+    if not plots then return nil end
+
+    for _, plot in ipairs(plots:GetChildren()) do
+        if isMyPlot(plot) then continue end
+        
+        local podiums = plot:FindFirstChild("AnimalPodiums")
+        if not podiums then continue end
+        
+        for _, podium in ipairs(podiums:GetChildren()) do
+            local base = podium:FindFirstChild("Base")
+            local spawnPoint = base and base:FindFirstChild("Spawn")
+            local attachment = spawnPoint and spawnPoint:FindFirstChild("PromptAttachment")
+            
+            if attachment then
+                for _, child in ipairs(attachment:GetChildren()) do
+                    if child:IsA("ProximityPrompt") and isValidStealPrompt(child) then
+                        local dist = (root.Position - child.Parent.WorldPosition).Magnitude
+                        if dist < minDistance then
+                            minDistance = dist
+                            nearestPrompt = child
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nearestPrompt
+end
+
+local function firePromptConnections(prompt, signalName)
+    local connections = getconnections(prompt[signalName])
+    for _, conn in ipairs(connections) do
+        if conn.Function then
+            task.spawn(conn.Function)
+        end
+    end
+end
+
+local function executeSteal(prompt)
+    if isStealing or not prompt or not prompt.Parent then return end
+    isStealing = true
+
+    print("🛠 Stealing:", prompt.ObjectText or "Unknown Item")
+    
+    firePromptConnections(prompt, "PromptButtonHoldBegan")
+    
+    task.wait(stealDelay)
+    
+    if prompt and prompt.Parent and prompt.Enabled then
+        firePromptConnections(prompt, "Triggered")
+        print("✅ Stolen:", prompt.ObjectText or "Item")
+    end
+
+    isStealing = false
+end
+
+-- Auto Steal Loop
+task.spawn(function()
+    while true do
+        if autoStealEnabled and not isStealing then
+            local target = getNearestStealable()
+            if target then
+                executeSteal(target)
+            end
+        end
+        task.wait(0.1)
+    end
+end)
+
+print("✅ VonSupreme AutoSteal loaded | GUI komplett unsichtbar")
+print("   AutoSteal ist aktiv mit", stealDelay, "Sekunden Delay")
